@@ -1,4 +1,13 @@
 torch
-diffusers
-transformers
-accelerate
+torchvision
+einops
+timm
+diffusers==0.31.0
+transformers==4.45.2
+sentencepiece
+# spaces
+huggingface_hub
+accelerate==0.32.0
+peft
+git+https://github.com/ToTheBeginning/facexlib.git
+protobuf
