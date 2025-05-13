@@ -1,138 +1,111 @@
-# Cog Template Repository
+# Run DreamO with Cog and Replicate
 
-This is a template repository for creating [Cog](https://github.com/replicate/cog) models that efficiently handle model weights with proper caching. It includes tools to upload model weights to Google Cloud Storage and generate download code for your `predict.py` file.
+[![Replicate](https://replicate.com/zsxkib/dream-o/badge)](https://replicate.com/zsxkib/dream-o)
 
-[![Cog](https://github.com/replicate/cog/raw/main/docs/header.png)](https://github.com/replicate/cog)
+DreamO is an image model from ByteDance that you can use with Cog. It's good for creating images from text descriptions, using one image to set the style for another, or making sure a face stays the same across different images.
 
-## Getting Started
+This guide shows you how to get DreamO running with Cog and how to put your model on Replicate.
 
-To use this template for your own model:
+## What you need
 
-1. Clone this repository
-2. Modify `predict.py` with your model's implementation
-3. Update `cog.yaml` with your model's dependencies
-4. Use `cache_manager.py` to upload and manage model weights
+First, you'll need to install Cog. You can find instructions in the [official Cog installation guide](https://github.com/replicate/cog#install). You'll usually need Docker installed too.
 
-## Repository Structure
+## How to run the model
 
-- `predict.py`: The main model implementation file 
-- `cache_manager.py`: Script for uploading model weights to GCS and generating download code
-- `cog.yaml`: Cog configuration file that defines your model's environment
+You can run the DreamO model with the `cog predict` command. Here's what the different settings do:
 
-## Managing Model Weights with cache_manager.py
+*   `prompt` (text): The main text you want the model to create an image from.
+*   `negative_prompt` (text, optional): Words to tell the model what *not* to include in the image. It has a default list of terms like "unrealistic, fake, low quality".
+*   `ref_image` (file, optional): An image file you want to use as a reference.
+*   `ref_task` (text): Tells the model how to use the `ref_image`. Your options are:
+    *   `id`: Keeps the face from your `ref_image`. This is the default.
+    *   `ip`: Uses your `ref_image` to make a new image, and tries to remove the background from the reference.
+    *   `style`: Uses your `ref_image` just for its style.
+*   `task` (text): Sets the main job for the model:
+    *   `text_guided`: Mainly uses your `prompt` to create the image. This is the default.
+    *   `image_guided`: Mainly uses your `ref_image` and the `ref_task` setting.
+    *   `mix`: Balances text and image guidance.
+*   `style_strength` (number): How much of the `ref_image`'s style to apply. Use a number between 0.0 and 1.0. Default is 0.5.
+*   `ip_scale` (number): How much to scale the reference image if `ref_task` is `ip` or `style`. Use a number between 0.0 and 1.0. Default is 0.6.
+*   `width` (number): How wide you want the final image to be, in pixels. Default is 1024.
+*   `height` (number): How tall you want the final image to be, in pixels. Default is 1024.
+*   `num_inference_steps` (number): Number of steps the model takes to create the image. More steps can mean better quality but take longer. Default is 30.
+*   `guidance_scale` (number): How much the model should stick to your prompt. Higher values mean stricter adherence. Default is 7.5.
+*   `seed` (number, optional): A number to make your image generation repeatable. If you don't set one, it will pick a random seed.
+*   `output_format` (text): The file type for the output image. Choices are `webp`, `jpg`, or `png`. Default is `webp`.
+*   `output_quality` (number): For `webp` or `jpg` images, this sets the compression quality from 1 to 100. Default is 80.
 
-A key feature of this template is the `cache_manager.py` script, which helps you:
+**Examples**
 
-1. Upload model weights to Google Cloud Storage (GCS)
-2. Generate code for downloading those weights in your `predict.py`
-3. Handle both individual files and directories efficiently
+Here are a few ways you can use `cog predict`. These examples use image URLs, but you can also use files from your computer.
 
-### Prerequisites for Using cache_manager.py
+**Keep a face consistent**
 
-- Google Cloud SDK installed and configured (`gcloud` command)
-- Permission to upload to the specified GCS bucket (default: `gs://replicate-weights/`)
-- `tar` command available in your PATH
-
-### Basic Usage
-
-```bash
-python cache_manager.py --model-name your-model-name --local-dirs model_cache
-```
-
-This will:
-1. Find files and directories in the `model_cache` directory
-2. Create tar archives of each directory
-3. Upload both individual files and tar archives to GCS
-4. Generate code snippets for downloading the weights in your `predict.py`
-
-### Advanced Usage
+This example creates an image of "A beautiful woman..." and tries to use the face from `woman1.png`.
 
 ```bash
-python cache_manager.py \
-    --model-name your-model-name \
-    --local-dirs model_cache weights \
-    --gcs-base-path gs://replicate-weights/ \
-    --cdn-base-url https://weights.replicate.delivery/default/ \
-    --keep-tars
+cog predict -i prompt="A beautiful woman, masterpiece, stunning, ultra high res, cinematic lighting" \
+    -i ref_image="https://raw.githubusercontent.com/bytedance/DreamO/main/example_inputs/woman1.png" \
+    -i ref_task="id" \
+    -i task="text_guided" \
+    -i seed=0
 ```
 
-#### Parameters
+**Use an image for composition**
 
-- `--model-name`: Required. The name of your model (used in paths)
-- `--local-dirs`: Required. One or more local directories to process
-- `--gcs-base-path`: Optional. Base Google Cloud Storage path
-- `--cdn-base-url`: Optional. Base CDN URL
-- `--keep-tars`: Optional. Keep the generated .tar files locally after upload
+This example uses `dog1.png` as a reference, tries to remove its background, and then creates an image based on the prompt "A Corgi puppy...".
 
-## Workflow Example
+```bash
+cog predict -i prompt="A Corgi puppy, masterpiece, stunning, ultra high res, cinematic lighting" \
+    -i ref_image="https://raw.githubusercontent.com/bytedance/DreamO/main/example_inputs/dog1.png" \
+    -i ref_task="ip" \
+    -i task="text_guided" \
+    -i ip_scale=0.7 \
+    -i seed=1
+```
 
-1. **Develop your model locally**:
-   ```bash
-   # Run your model once to download weights to model_cache
-   cog predict -i prompt="test"
-   ```
+**Transfer a style**
 
-2. **Upload model weights**:
-   ```bash
-   python cache_manager.py --model-name your-model-name --local-dirs model_cache
-   ```
+This example creates an image of "A sports car..." using the style from `style1.png`.
 
-3. **Copy the generated code snippet** into your `predict.py`
+```bash
+cog predict -i prompt="A sports car, masterpiece, stunning, ultra high res, cinematic lighting" \
+    -i ref_image="https://raw.githubusercontent.com/bytedance/DreamO/main/example_inputs/style1.png" \
+    -i ref_task="style" \
+    -i task="text_guided" \
+    -i style_strength=0.6 \
+    -i seed=2
+```
 
-4. **Test that the model can download weights**:
-   ```bash
-   rm -rf model_cache
-   cog predict -i prompt="test"
-   ```
+**Mix text and image guidance**
 
-## Example Implementation
+This example uses mixed guidance with a reference image to keep the face consistent for "A beautiful man in Van Gogh style...".
 
-The template comes with a sample Stable Diffusion implementation in `predict.py` that demonstrates:
+```bash
+cog predict -i prompt="A beautiful man in Van Gogh style, masterpiece, stunning, ultra high res, cinematic lighting" \
+    -i ref_image="https://raw.githubusercontent.com/bytedance/DreamO/main/example_inputs/man1.png" \
+    -i ref_task="id" \
+    -i task="mix" \
+    -i seed=3
+```
 
-- Setting up the model cache directory
-- Downloading weights from GCS with progress reporting
-- Setting environment variables for model caching
-- Random seed generation for reproducibility
-- Output format and quality options
+## Put your model on Replicate
 
-## Best Practices
+Once your model works the way you want with Cog, you can share it on Replicate.
 
-- **Environment Variables**: Set cache-related environment variables early
-  ```python
-  os.environ["HF_HOME"] = MODEL_CACHE
-  os.environ["TORCH_HOME"] = MODEL_CACHE
-  # etc.
-  ```
-
-- **Seed Management**: Provide a seed parameter and implement random seed generation
-  ```python
-  if seed is None:
-      seed = int.from_bytes(os.urandom(2), "big")
-  print(f"Using seed: {seed}")
-  ```
-
-- **Output Formats**: Support multiple output formats (webp, jpg, png) with quality controls
-  ```python
-  output_format: str = Input(
-      description="Format of the output image",
-      choices=["webp", "jpg", "png"],
-      default="webp"
-  )
-  output_quality: int = Input(
-      description="The image compression quality...",
-      ge=1, le=100, default=80
-  )
-  ```
-
-## Deploying to Replicate
-
-After setting up your model, you can push it to [Replicate](https://replicate.com):
-
-1. Create a new model on Replicate
-2. Push your model:
-   ```bash
-   cog push r8.im/username/model-name
-   ```
+1.  **Log in to Replicate:**
+    ```bash
+    cog login
+    ```
+2.  **Push your model:**
+    Replace `your-username/your-model-name` with your Replicate username and the name you want for your model.
+    ```bash
+    cog push r8.im/your-username/your-model-name
+    ```
+    For example, if your Replicate username is `zsxkib` and you call your model `dream-o`, you would run:
+    ```bash
+    cog push r8.im/zsxkib/dream-o
+    ```
 
 ## License
 
@@ -140,8 +113,6 @@ MIT
 
 ---
 
-[![Replicate](https://replicate.com/account/model-name/badge)](https://replicate.com/account/model-name) 
+⭐ Star this on [GitHub](https://github.com/zsxkib/cog-DreamO)!
 
-⭐ Star the repo on [GitHub](https://github.com/username/repo-name)!
-
-👋 Follow me on [Twitter/X](https://twitter.com/username)
+👋 Follow `zsxkib` on [Twitter/X](https://twitter.com/zsakib_)
